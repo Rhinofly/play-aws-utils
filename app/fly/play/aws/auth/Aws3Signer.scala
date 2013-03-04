@@ -61,7 +61,7 @@ case class Aws3Signer(credentials: AwsCredentials) extends Signer with SignerUti
     newHeaders
   }
 
-  private[auth] def createCannonicalRequest(method: String, resourcePath: Option[String], queryString: Map[String, String], headers: Map[String, Seq[String]], body: Option[Array[Byte]]): (String, String) = {
+  private[auth] def createCannonicalRequest(method: String, resourcePath: Option[String], queryString: Map[String, Seq[String]], headers: Map[String, Seq[String]], body: Option[Array[Byte]]): (String, String) = {
 
     val elligableHeaders = headers.keys.filter { k =>
       val lowerCaseKey = k.toLowerCase
@@ -76,7 +76,11 @@ case class Aws3Signer(credentials: AwsCredentials) extends Signer with SignerUti
         /* resourcePath */
         resourcePath.map(urlEncodePath _).getOrElse("/") + "\n" +
         /* queryString */
-        queryString.toSeq.sorted.map { case (k, v) => urlEncode(k) + "=" + urlEncode(v) }.mkString("&") + "\n" +
+        queryString
+        	.map {case (k, v) => k -> v.head }
+        	.toSeq.sorted
+        	.map { case (k, v) => urlEncode(k) + "=" + urlEncode(v) }
+        	.mkString("&") + "\n" +
         /* headers */
         sortedHeaders.map(k => k.toLowerCase + ":" + headers(k).mkString(" ") + "\n").mkString + "\n" +
         /* payload */

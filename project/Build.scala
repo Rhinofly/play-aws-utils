@@ -1,15 +1,13 @@
 import sbt._
 import Keys._
-import PlayProject._
+import play.Project._
 
 object ApplicationBuild extends Build {
 
     val appName         = "api-aws-utils"
-    val appVersion      = "1.3.1"
+    val appVersion      = "2.3.1"
 
-    val appDependencies = Seq(
-      "nl.rhinofly" %% "library-utils" % "1.0.1"
-    )
+    val appDependencies = Seq()
 
     
  def rhinoflyRepo(version: String) = {
@@ -17,7 +15,7 @@ object ApplicationBuild extends Build {
     Some("Rhinofly Internal " + repo.capitalize + " Repository" at "http://maven-repository.rhinofly.net:8081/artifactory/libs-" + repo + "-local")
   }
     
-  val main = PlayProject(appName, appVersion, appDependencies, mainLang = SCALA).settings(
+  val main = play.Project(appName, appVersion, appDependencies).settings(
     organization := "nl.rhinofly",
     publishTo <<= version(rhinoflyRepo),
     resolvers += rhinoflyRepo("RELEASE").get,

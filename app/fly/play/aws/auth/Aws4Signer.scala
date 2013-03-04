@@ -20,11 +20,11 @@ case class Aws4Signer(credentials: AwsCredentials, service: Option[String] = Non
   private val AwsCredentials(accessKeyId, secretKey, sessionToken, expirationSeconds) = credentials
 
   def sign(request: WS.WSRequestHolder, method: String): WS.WSRequestHolder =
-  addAuthorizationHeaders(request, method, None, None)
-  
+    addAuthorizationHeaders(request, method, None, None)
+
   def sign[T](request: WS.WSRequestHolder, method: String, body: T)(implicit wrt: Writeable[T], ct: ContentTypeOf[T]): WS.WSRequestHolder =
-  addAuthorizationHeaders(request, method, Some(wrt transform body), ct.mimeType)
-  
+    addAuthorizationHeaders(request, method, Some(wrt transform body), ct.mimeType)
+
   private[auth] def serviceAndRegion(backup: String): (String, String) = {
     lazy val ServiceAndRegion(extractedService, extractedRegion) = ServiceAndRegion(backup)
 
@@ -82,7 +82,7 @@ case class Aws4Signer(credentials: AwsCredentials, service: Option[String] = Non
     newHeaders
   }
 
-  private[auth] def createCannonicalRequest(method: String, resourcePath: Option[String], queryString: Map[String, String], headers: Map[String, Seq[String]], body: Option[Array[Byte]]): (String, java.lang.String) = {
+  private[auth] def createCannonicalRequest(method: String, resourcePath: Option[String], queryString: Map[String, Seq[String]], headers: Map[String, Seq[String]], body: Option[Array[Byte]]): (String, java.lang.String) = {
 
     val sortedHeaders = headers.keys.toSeq.sorted
     val signedHeaders = sortedHeaders.map(_.toLowerCase).mkString(";")
@@ -92,7 +92,11 @@ case class Aws4Signer(credentials: AwsCredentials, service: Option[String] = Non
         /* resourcePath */
         resourcePath.map(urlEncodePath _).getOrElse("/") + "\n" +
         /* queryString */
-        queryString.toSeq.sorted.map { case (k, v) => urlEncode(k) + "=" + urlEncode(v) }.mkString("&") + "\n" +
+        queryString
+        	.map { case (k, v) => k -> v.head }
+        	.toSeq.sorted
+        	.map { case (k, v) => urlEncode(k) + "=" + urlEncode(v) }
+        	.mkString("&") + "\n" +
         /* headers */
         sortedHeaders.map(k => k.toLowerCase + ":" + headers(k).mkString(" ") + "\n").mkString + "\n" +
         /* signed headers */

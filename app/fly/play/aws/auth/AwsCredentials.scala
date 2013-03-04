@@ -2,7 +2,7 @@ package fly.play.aws.auth
 
 import java.util.Date
 import play.api.Play.current
-import fly.play.libraryUtils.PlayConfiguration
+import fly.play.aws.PlayConfiguration
 
 trait AwsCredentials {
   def accessKeyId: String

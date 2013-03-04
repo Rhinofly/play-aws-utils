@@ -31,7 +31,7 @@ trait SignerUtils {
   def hash(bytes: Array[Byte]): Array[Byte] = {
     val md = MessageDigest getInstance "SHA-256"
     md update bytes
-    md digest
+    md.digest
   }
   
   def sign(str: String, key: String): Array[Byte] = sign(str, key getBytes DEFAULT_ENCODING)

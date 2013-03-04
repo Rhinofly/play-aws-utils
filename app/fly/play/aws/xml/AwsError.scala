@@ -8,8 +8,8 @@ case class AwsError(status: Int, code: String, message: String, originalXml: Opt
   
   def this(status: Int, originalXml: Elem) =
     this(status,
-      getErrorElem(originalXml) \ "Code" text,
-      getErrorElem(originalXml) \ "Message" text,
+      (getErrorElem(originalXml) \ "Code").text,
+      (getErrorElem(originalXml) \ "Message").text,
       Some(originalXml))
       
 }
