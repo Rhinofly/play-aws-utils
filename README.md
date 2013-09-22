@@ -69,10 +69,20 @@ Installation
 
 ``` scala
   val appDependencies = Seq(
-    "nl.rhinofly" %% "play-aws-utils" % "2.3.2"
+    "nl.rhinofly" %% "play-aws-utils" % "2.4.2"
   )
   
   val main = PlayProject(appName, appVersion, appDependencies, mainLang = SCALA).settings(
     resolvers += "Rhinofly Internal Release Repository" at "http://maven-repository.rhinofly.net:8081/artifactory/libs-release-local"
   )
+```
+
+Testing
+-------
+
+In order to have the tests succeed you need to have a `test/conf/application.conf` file (note, it's in the test directory) containing: 
+
+``` scala
+aws.accessKeyId=testKey
+aws.secretKey=testSecret
 ```
