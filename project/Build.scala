@@ -5,7 +5,7 @@ import play.Project._
 object ApplicationBuild extends Build {
 
   val appName = "play-aws-utils"
-  val appVersion = "2.4.2"
+  val appVersion = "3.0.0"
 
   val appDependencies = Seq()
 

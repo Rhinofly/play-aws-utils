@@ -1,10 +1,3 @@
-*Job opening: Scala programmer at Rhinofly*
--------------------------------------------
-Each new project we start is being developed in Scala. Therefore, we are in need of a [Scala programmer](http://rhinofly.nl/vacatures/vacature-scala.html) who loves to write beautiful code. No more legacy projects or maintenance of old systems of which the original programmer is already six feet under. What we need is new, fresh code for awesome projects.
-
-Are you the Scala programmer we are looking for? Take a look at the [job description](http://rhinofly.nl/vacatures/vacature-scala.html) (in Dutch) and give the Scala puzzle a try! Send us your solution and you will be invited for a job interview.
-* * *
-
 Amazon Web Services utils
 =========================
 
@@ -19,18 +12,13 @@ This object is mainly used to wrap Play's `WS` component and add signing to it. 
 Aws
   .withSigner(...)
   .url(...)
- 	
-  ...
- 	
-Aws
-  .withSigner3(...)
-  .url(...)
-```
 
-The Signers
+  ...
+
+The Signer
 -----------
 
-The current version supplies Aws version 3 and Aws version 4 signers.
+The current version supplies Aws version 4 signer.
 
 AwsCredentials
 --------------
@@ -40,7 +28,7 @@ The `AwsCredentials` object contains `apply` and `unapply` methods. Some usage e
 ``` scala
 val c = AwsCredentials("key", "secret")
 
-val AwsCredentials(key, secret, tokenOption, expirationOption) = c
+val AwsCredentials(key, secret) = c
 
 ```
 
@@ -69,9 +57,9 @@ Installation
 
 ``` scala
   val appDependencies = Seq(
-    "nl.rhinofly" %% "play-aws-utils" % "2.4.2"
+    "nl.rhinofly" %% "play-aws-utils" % "3.0.0"
   )
-  
+
   val main = PlayProject(appName, appVersion, appDependencies, mainLang = SCALA).settings(
     resolvers += "Rhinofly Internal Release Repository" at "http://maven-repository.rhinofly.net:8081/artifactory/libs-release-local"
   )
@@ -80,7 +68,7 @@ Installation
 Testing
 -------
 
-In order to have the tests succeed you need to have a `test/conf/application.conf` file (note, it's in the test directory) containing: 
+In order to have the tests succeed you need to have a `test/conf/application.conf` file (note, it's in the test directory) containing:
 
 ``` scala
 aws.accessKeyId=testKey

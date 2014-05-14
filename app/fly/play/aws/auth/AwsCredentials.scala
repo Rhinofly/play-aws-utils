@@ -1,25 +1,23 @@
 package fly.play.aws.auth
 
 import java.util.Date
-import play.api.Play.current
 import fly.play.aws.PlayConfiguration
+import play.api.Application
 
 trait AwsCredentials {
   def accessKeyId: String
   def secretKey: String
-  def sessionToken: Option[String]
-  def expiration: Option[Date]
 }
 
-object AwsCredentials extends ((String, String, Option[String], Option[Date]) => AwsCredentials) {
-  def unapply(c: AwsCredentials): Option[(String, String, Option[String], Option[Date])] = if (c == null) None else Some((c.accessKeyId, c.secretKey, c.sessionToken, c.expiration))
+object AwsCredentials extends ((String, String) => AwsCredentials) {
+  def unapply(c: AwsCredentials): Option[(String, String)] =
+    Option(c) map { c => (c.accessKeyId, c.secretKey) }
 
-  def apply(accessKeyId: String, secretKey: String, sessionToken: Option[String] = None, expiration: Option[Date] = None): AwsCredentials =
-    SimpleAwsCredentials(accessKeyId, secretKey, sessionToken, expiration)
+  def apply(accessKeyId: String, secretKey: String): AwsCredentials =
+    SimpleAwsCredentials(accessKeyId, secretKey)
 
-  lazy val fromConfiguration: AwsCredentials = SimpleAwsCredentials(PlayConfiguration("aws.accessKeyId"), PlayConfiguration("aws.secretKey"))
-  
-  implicit def implicitAwsCredentials:AwsCredentials = fromConfiguration
+  implicit def fromConfiguration(implicit app: Application): AwsCredentials =
+    SimpleAwsCredentials(PlayConfiguration("aws.accessKeyId"), PlayConfiguration("aws.secretKey"))
 }
 
-case class SimpleAwsCredentials(accessKeyId: String, secretKey: String, sessionToken: Option[String] = None, expiration: Option[Date] = None) extends AwsCredentials
+case class SimpleAwsCredentials(accessKeyId: String, secretKey: String) extends AwsCredentials

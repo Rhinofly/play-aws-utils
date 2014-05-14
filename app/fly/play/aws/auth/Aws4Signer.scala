@@ -1,119 +1,189 @@
 package fly.play.aws.auth
 
-import fly.play.aws.Aws
-import fly.play.aws.ServiceAndRegion
-import java.net.URI
-import java.net.URLEncoder
-import java.security.MessageDigest
-import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.SimpleTimeZone
-import javax.crypto.spec.SecretKeySpec
-import javax.crypto.Mac
-import play.api.http.ContentTypeOf
+
+import fly.play.aws.Aws
 import play.api.http.Writeable
 import play.api.libs.ws.WS
-import scala.Array.canBuildFrom
 
-case class Aws4Signer(credentials: AwsCredentials, service: Option[String] = None, region: Option[String] = None) extends Signer with SignerUtils {
+class Aws4Signer(val credentials: AwsCredentials, val service: String, val region: String) extends Signer with SignerUtils {
 
-  private val AwsCredentials(accessKeyId, secretKey, sessionToken, expirationSeconds) = credentials
+  val AwsCredentials(accessKeyId, secretKey) = credentials
+
+  val algorithm = "AWS4-HMAC-SHA256"
+
+  def sign(string: String) = createSignature(string, Scope(currentDate))
 
   def sign(request: WS.WSRequestHolder, method: String): WS.WSRequestHolder =
-    addAuthorizationHeaders(request, method, None, None)
+    addAuthorizationHeaders(request, method, Some(Array.empty))
 
-  def sign[T](request: WS.WSRequestHolder, method: String, body: T)(implicit wrt: Writeable[T], ct: ContentTypeOf[T]): WS.WSRequestHolder =
-    addAuthorizationHeaders(request, method, Some(wrt transform body), ct.mimeType)
+  def sign[T](request: WS.WSRequestHolder, method: String, body: T)(implicit wrt: Writeable[T]): WS.WSRequestHolder =
+    addAuthorizationHeaders(request, method, Some(wrt transform body))
 
-  private[auth] def serviceAndRegion(backup: String): (String, String) = {
-    lazy val ServiceAndRegion(extractedService, extractedRegion) = ServiceAndRegion(backup)
+  def signUrl(url: String, expiresIn: Int, queryString: Map[String, Seq[String]] = Map.empty): String = {
+    require(expiresIn >= 1, "expiresIn must at least be 1 second")
+    require(expiresIn <= 604800, "expiresIn can be no longer than 7 days (604800 seconds)")
 
-    (service getOrElse extractedService, region getOrElse extractedRegion)
+    val scope = Scope(currentDate)
+
+    val queryStringWithRequiredParams = queryString ++
+      Map(
+        amzAlgorithm,
+        amzCredential(scope),
+        amzExpires(expiresIn),
+        amzSignedHeaders("host"),
+        amzDate(scope))
+
+    val request = Request("GET", url, Map.empty, queryStringWithRequiredParams, None)
+
+    val signature = createRequestSignature(scope, request)
+
+    val signedQueryString =
+      queryStringWithRequiredParams + amzSignature(signature)
+
+    url + "?" + queryStringAsString(signedQueryString)
   }
 
-  private[auth] def addAuthorizationHeaders(request: WS.WSRequestHolder, method: String, body: Option[Array[Byte]], contentType: Option[String]): WS.WSRequestHolder = {
+  case class Scope(date: Date) {
+    private val dateStamp = Aws.dates.dateStampFormat format date
 
-    import Aws.dates._
+    lazy val value = dateStamp + "/" + region + "/" + service + "/" + TERMINATOR
 
-    val uri = URI.create(request.url)
-    val host = uri.getHost
-    val date = new Date
-    val dateTime = dateTimeFormat format date
-
-    var newHeaders = addHeaders(request.headers, host, dateTime, contentType)
-
-    val resourcePath = uri.getPath match {
-      case "" | null => None
-      case path => Some(path)
+    lazy val key = {
+      var key = sign(dateStamp, "AWS4" + secretKey)
+      key = sign(region, key)
+      key = sign(service, key)
+      key = sign(TERMINATOR, key)
+      key
     }
 
-    val (signedHeaders, cannonicalRequest) = createCannonicalRequest(method, resourcePath, request.queryString, newHeaders, body)
+    lazy val dateTime = Aws.dates.dateTimeFormat format date
 
-    val dateStamp = dateStampFormat format date
-    val (service, region) = serviceAndRegion(backup = host)
-    val scope = dateStamp + "/" + region + "/" + service + "/" + TERMINATOR
-
-    val stringToSign = createStringToSign(dateTime, cannonicalRequest, scope)
-
-    var key = sign(dateStamp, "AWS4" + secretKey)
-    key = sign(region, key)
-    key = sign(service, key)
-    key = sign(TERMINATOR, key)
-
-    val authorizationHeader = ALGORITHM + " " +
-      "Credential=" + accessKeyId + "/" + scope + ", " +
-      "SignedHeaders=" + signedHeaders + ", " +
-      "Signature=" + toHex(sign(stringToSign, key))
-
-    newHeaders += "Authorization" -> Seq(authorizationHeader)
-
-    request.copy(headers = newHeaders)
+    lazy val credentials = accessKeyId + "/" + value
   }
 
-  private[auth] def addHeaders(headers: Map[String, Seq[String]], host: String, dateTime: String, contentType: Option[String]): Map[String, Seq[String]] = {
-    var newHeaders = headers
+  private def addAuthorizationHeaders(wsRequest: WS.WSRequestHolder, method: String, body: Option[Array[Byte]]): WS.WSRequestHolder = {
+    val request = Request(
+      method,
+      wsRequest.url,
+      wsRequest.headers,
+      wsRequest.queryString,
+      body)
 
-    sessionToken foreach (newHeaders += "X-Amz-Security-Token" -> Seq(_))
-    contentType foreach (newHeaders += "Content-type" -> Seq(_))
+    val extraHeaders = createAuthorizationHeaders(request)
 
-    newHeaders += "Host" -> Seq(host)
-    newHeaders += "X-Amz-Date" -> Seq(dateTime)
-
-    newHeaders
+    wsRequest.copy(headers = wsRequest.headers ++ extraHeaders)
   }
 
-  private[auth] def createCannonicalRequest(method: String, resourcePath: Option[String], queryString: Map[String, Seq[String]], headers: Map[String, Seq[String]], body: Option[Array[Byte]]): (String, java.lang.String) = {
+  private def createAuthorizationHeaders(request: Request): Map[String, Seq[String]] = {
 
-    val sortedHeaders = headers.keys.toSeq.sorted
-    val signedHeaders = sortedHeaders.map(_.toLowerCase).mkString(";")
+    val scope = Scope(currentDate)
+    val dateHeader = amzDate(scope)
+
+    val requestWithDateHeader =
+      request.copy(headers = request.headers + dateHeader)
+
+    val signature = createRequestSignature(scope, requestWithDateHeader)
+
+    val authorizationHeaderValue =
+      createAuthorizationHeader(scope, requestWithDateHeader.signedHeaders, signature)
+
+    val authorizationHeader =
+      "Authorization" -> Seq(authorizationHeaderValue)
+
+    Map(dateHeader, authorizationHeader)
+  }
+
+  protected def createRequestSignature(scope: Scope, request: Request) = {
+
+    val cannonicalRequest = createCannonicalRequest(request)
+
+    val stringToSign = createStringToSign(scope, cannonicalRequest)
+
+    val signature = createSignature(stringToSign, scope)
+
+    signature
+  }
+
+  protected def createCannonicalRequest(request: Request) = {
+
+    val Request(method, _, headers, queryString, body) = request
+
+    val normalizedHeaders = request.normalizedHeaders
+
+    val payloadHash =
+      normalizedHeaders
+        .get(CONTENT_SHA_HEADER_NAME.toLowerCase)
+        .flatMap(_.headOption)
+        .orElse(body.map(hexHash))
+        .getOrElse("UNSIGNED-PAYLOAD")
+
+    val resourcePath =
+      request.uri.getRawPath match {
+        case "" | null => "/"
+        case path => path
+      }
 
     val cannonicalRequest =
       method + "\n" +
         /* resourcePath */
-        resourcePath.map(urlEncodePath _).getOrElse("/") + "\n" +
+        resourcePath + "\n" +
         /* queryString */
         queryString
-        	.map { case (k, v) => k -> v.head }
-        	.toSeq.sorted
-        	.map { case (k, v) => urlEncode(k) + "=" + urlEncode(v) }
-        	.mkString("&") + "\n" +
+        .map { case (k, v) => k -> v.headOption.getOrElse("") }
+        .toSeq.sorted
+        .map { case (k, v) => UrlEncoder.encode(k) + "=" + UrlEncoder.encode(v) }
+        .mkString("&") + "\n" +
         /* headers */
-        sortedHeaders.map(k => k.toLowerCase + ":" + headers(k).mkString(" ") + "\n").mkString + "\n" +
+        normalizedHeaders.map { case (k, v) => k + ":" + v.mkString(" ") + "\n" }.mkString + "\n" +
         /* signed headers */
-        signedHeaders + "\n" +
+        request.signedHeaders + "\n" +
         /* payload */
-        toHex(body.map(hash _) getOrElse EMPTY_HASH)
+        payloadHash
 
-    (signedHeaders, cannonicalRequest)
+    cannonicalRequest
   }
 
-  private[auth] def createStringToSign(dateTime: String, cannonicalRequest: String, scope: String): String =
-    ALGORITHM + "\n" +
-      dateTime + "\n" +
-      scope + "\n" +
+  protected def createStringToSign(scope: Scope, cannonicalRequest: String): String =
+    algorithm + "\n" +
+      scope.dateTime + "\n" +
+      scope.value + "\n" +
       toHex(hash(cannonicalRequest))
 
-  private val ALGORITHM = "AWS4-HMAC-SHA256"
+  protected def createSignature(stringToSign: String, scope: Scope) =
+    toHex(sign(stringToSign, scope.key))
+
+  protected def createAuthorizationHeader(
+    scope: Scope, signedHeaders: String, signature: String): String =
+    algorithm + " " +
+      "Credential=" + scope.credentials + "," +
+      "SignedHeaders=" + signedHeaders + "," +
+      "Signature=" + signature
+
+  private def queryStringAsString(queryString: Map[String, Seq[String]]) =
+    queryString.map {
+      case (k, v) => UrlEncoder.encode(k) + "=" + v.map(UrlEncoder.encode).mkString(",")
+    }.mkString("&")
+
+  private def hexHash(payload: Array[Byte]) = toHex(hash(payload))
+
+  val amzAlgorithm =
+    "X-Amz-Algorithm" -> Seq(algorithm)
+  def amzDate(scope: Scope) =
+    "X-Amz-Date" -> Seq(scope.dateTime)
+  def amzCredential(scope: Scope) =
+    "X-Amz-Credential" -> Seq(scope.credentials)
+  def amzSignature(signature: String) =
+    "X-Amz-Signature" -> Seq(signature)
+  def amzExpires(expiresIn: Int) =
+    "X-Amz-Expires" -> Seq(expiresIn.toString)
+  def amzSignedHeaders(headers: String) =
+    "X-Amz-SignedHeaders" -> Seq(headers)
+  def amzContentSha256(content: Array[Byte]) =
+    CONTENT_SHA_HEADER_NAME -> hexHash(content)
+
+  protected def currentDate = new Date
   private val TERMINATOR = "aws4_request"
+  private val CONTENT_SHA_HEADER_NAME = "X-Amz-Content-Sha256"
 
 }
