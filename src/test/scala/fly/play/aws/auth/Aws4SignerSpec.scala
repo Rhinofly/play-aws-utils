@@ -7,11 +7,12 @@ import java.util.TimeZone
 import scala.collection.mutable
 import scala.language.reflectiveCalls
 import org.specs2.mutable.Specification
+import fly.play.aws.Aws
+import play.api.Play.current
 import play.api.http.ContentTypeOf
 import play.api.libs.ws.WS
-import play.api.Play.current
-import play.api.test.FakeApplication
 import testUtils.RunningFakePlayApplication
+import play.api.libs.ws.WSRequestHolder
 
 object Aws4SignerSpec extends Specification with RunningFakePlayApplication {
 
@@ -35,19 +36,20 @@ object Aws4SignerSpec extends Specification with RunningFakePlayApplication {
            |20120519/us-east-1/sts/aws4_request
            |ec19857897328f82cfb526a6bae44824ad717e58272c3a018545b658ceba425d""".stripMargin
 
-      val request =
-        WS.url("https://sts.amazonaws.com")
-          .withQueryString(
-            "Action" -> "GetSessionToken",
-            "DurationSeconds" -> "3600",
-            "Version" -> "2011-06-15")
-
       val signer = {
         val cal = Calendar.getInstance(TimeZone.getTimeZone("GMT"))
         cal.set(2012, 4, 19, 0, 43, 56)
         newSigner("sts", cal.getTime)
       }
-      val signedRequest = signer.sign(request, "GET")
+
+      val signedRequest =
+        Aws.withSigner(signer).url("https://sts.amazonaws.com")
+          .withQueryString(
+            "Action" -> "GetSessionToken",
+            "DurationSeconds" -> "3600",
+            "Version" -> "2011-06-15").sign("GET")
+
+      //val signedRequest = signer.sign(request, "GET")
 
       test(signer, "cannonicalRequest", expectedCannonicalRequest)
       test(signer, "stringToSign", expectedStringToSign)
@@ -219,22 +221,26 @@ object Aws4SignerSpec extends Specification with RunningFakePlayApplication {
       val expectedAuthorizationHeader =
         "AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request,SignedHeaders=host;x-amz-content-sha256;x-amz-date,Signature=34b48302e7b5fa45bde8084f4b7868a86f0a534bc59db6670ed5711ef69dc6f7"
 
-      val signer = newSigner()
+      val signer = new AmzContentHeaderSignerSpy()
       val request =
-        WS
+        Aws.withSigner(signer)
           .url("http://examplebucket.s3.amazonaws.com")
           .withQueryString(
             "prefix" -> "J",
             "max-keys" -> "2")
-          .withHeaders(signer.amzContentSha256(Array.empty))
 
-      val signedRequest = signer.sign(request, "GET")
+      val signedRequest = request.sign("GET")
 
       test(signer, "cannonicalRequest", expectedCannonicalRequest)
       test(signer, "stringToSign", expectedStringToSign)
       test(signer, "signature", expectedSignature)
       test(signer, "authorizationHeader", expectedAuthorizationHeader)
 
+      val contentShaHeader = signer.amzContentSha256(Array.empty)
+      "don't include headers twice" in {
+    	  signedRequest.headers("X-Amz-Content-Sha256").size must_== 1
+      }
+      
       "signed request" in {
         signedRequest.headers("Authorization") must_== Seq(expectedAuthorizationHeader)
       }
@@ -292,36 +298,44 @@ object Aws4SignerSpec extends Specification with RunningFakePlayApplication {
   }
 
   def newSigner(service: String = "s3", date: Date = defaultDate) =
-    new Aws4Signer(credentials, service, "us-east-1") {
-      val results = mutable.Map.empty[String, String]
-
-      override def currentDate = date
-
-      override def createAuthorizationHeader(scope: Scope, signedHeaders: String, signature: String): String = {
-        val authorizationHeader = super.createAuthorizationHeader(scope, signedHeaders, signature)
-        results += "authorizationHeader" -> authorizationHeader
-        authorizationHeader
-      }
-      override def createStringToSign(scope: Scope, cannonicalRequest: String): String = {
-        val stringToSign = super.createStringToSign(scope, cannonicalRequest)
-        results += "stringToSign" -> stringToSign
-        stringToSign
-      }
-      override def createCannonicalRequest(request: Request) = {
-        val cannonicalRequest = super.createCannonicalRequest(request)
-        results += "cannonicalRequest" -> cannonicalRequest
-        cannonicalRequest
-      }
-      override def createSignature(stringToSign: String, scope: Scope) = {
-        val signature = super.createSignature(stringToSign, scope)
-        results += "signature" -> signature
-        signature
-      }
-    }
+    new SignerSpy(service, date)
 
   def test(signer: { def results: mutable.Map[String, String] }, name: String, expected: String) =
     name in {
       signer.results(name) must_== expected
     }
-}
 
+  class SignerSpy(service: String = "s3", date: Date = defaultDate)
+    extends Aws4Signer(credentials, service, "us-east-1") {
+    val results = mutable.Map.empty[String, String]
+
+    override def currentDate = date
+
+    override def createAuthorizationHeader(scope: Scope, signedHeaders: String, signature: String): String = {
+      val authorizationHeader = super.createAuthorizationHeader(scope, signedHeaders, signature)
+      results += "authorizationHeader" -> authorizationHeader
+      authorizationHeader
+    }
+    override def createStringToSign(scope: Scope, cannonicalRequest: String): String = {
+      val stringToSign = super.createStringToSign(scope, cannonicalRequest)
+      results += "stringToSign" -> stringToSign
+      stringToSign
+    }
+    override def createCannonicalRequest(request: Request) = {
+      val cannonicalRequest = super.createCannonicalRequest(request)
+      results += "cannonicalRequest" -> cannonicalRequest
+      cannonicalRequest
+    }
+    override def createSignature(stringToSign: String, scope: Scope) = {
+      val signature = super.createSignature(stringToSign, scope)
+      results += "signature" -> signature
+      signature
+    }
+  }
+  
+  class AmzContentHeaderSignerSpy extends SignerSpy {
+    override def sign(request: WSRequestHolder, method: String): WSRequestHolder = {
+      super.sign(request.withHeaders(amzContentSha256(Array.empty)), method)
+    }
+  }
+}
