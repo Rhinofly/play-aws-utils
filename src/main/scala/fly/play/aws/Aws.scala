@@ -24,10 +24,10 @@ import play.api.libs.ws.WSResponse
  */
 object Aws {
 
-  def withSigner(signer: Signer)(implicit app:Application) = AwsRequestBuilder(signer)
+  def withSigner(signer: Signer) = AwsRequestBuilder(signer)
 
-  case class AwsRequestBuilder(signer: Signer)(implicit app:Application) {
-    def url(url: String): AwsRequestHolder = 
+  case class AwsRequestBuilder(signer: Signer) {
+    def url(url: String)(implicit app:Application): AwsRequestHolder = 
       AwsRequestHolder(WS.url(url).withFollowRedirects(true), signer)
   }
 
