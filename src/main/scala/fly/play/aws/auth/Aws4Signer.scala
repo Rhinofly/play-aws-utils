@@ -138,7 +138,7 @@ class Aws4Signer(val credentials: AwsCredentials, val service: String, val regio
         .map { case (k, v) => UrlEncoder.encode(k) + "=" + UrlEncoder.encode(v) }
         .mkString("&") + "\n" +
         /* headers */
-        normalizedHeaders.map { case (k, v) => k + ":" + v.mkString(" ") + "\n" }.mkString + "\n" +
+        normalizedHeaders.map { case (k, v) => k + ":" + v.mkString(",") + "\n" }.mkString + "\n" +
         /* signed headers */
         request.signedHeaders + "\n" +
         /* payload */
