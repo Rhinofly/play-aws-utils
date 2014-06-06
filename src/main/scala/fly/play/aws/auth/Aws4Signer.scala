@@ -1,10 +1,9 @@
 package fly.play.aws.auth
 
 import java.util.Date
-
 import fly.play.aws.Aws
 import play.api.http.Writeable
-import play.api.libs.ws.WS
+import play.api.libs.ws.WSRequestHolder
 
 class Aws4Signer(val credentials: AwsCredentials, val service: String, val region: String) extends Signer with SignerUtils {
 
@@ -14,10 +13,10 @@ class Aws4Signer(val credentials: AwsCredentials, val service: String, val regio
 
   def sign(string: String) = createSignature(string, Scope(currentDate))
 
-  def sign(request: WS.WSRequestHolder, method: String): WS.WSRequestHolder =
+  def sign(request: WSRequestHolder, method: String): WSRequestHolder =
     addAuthorizationHeaders(request, method, Some(Array.empty))
 
-  def sign[T](request: WS.WSRequestHolder, method: String, body: T)(implicit wrt: Writeable[T]): WS.WSRequestHolder =
+  def sign[T](request: WSRequestHolder, method: String, body: T)(implicit wrt: Writeable[T]): WSRequestHolder =
     addAuthorizationHeaders(request, method, Some(wrt transform body))
 
   def signUrl(url: String, expiresIn: Int, queryString: Map[String, Seq[String]] = Map.empty): String = {
@@ -62,7 +61,7 @@ class Aws4Signer(val credentials: AwsCredentials, val service: String, val regio
     lazy val credentials = accessKeyId + "/" + value
   }
 
-  private def addAuthorizationHeaders(wsRequest: WS.WSRequestHolder, method: String, body: Option[Array[Byte]]): WS.WSRequestHolder = {
+  private def addAuthorizationHeaders(wsRequest: WSRequestHolder, method: String, body: Option[Array[Byte]]): WSRequestHolder = {
     val request = Request(
       method,
       wsRequest.url,
@@ -72,7 +71,11 @@ class Aws4Signer(val credentials: AwsCredentials, val service: String, val regio
 
     val extraHeaders = createAuthorizationHeaders(request)
 
-    wsRequest.copy(headers = wsRequest.headers ++ extraHeaders)
+    val headers = wsRequest.headers ++ extraHeaders
+    val simplifiedHeaders = headers.toSeq.flatMap {
+      case (name, values) => values.map(name -> _)
+    }
+    wsRequest.withHeaders(simplifiedHeaders: _*)
   }
 
   private def createAuthorizationHeaders(request: Request): Map[String, Seq[String]] = {

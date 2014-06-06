@@ -1,6 +1,5 @@
 package fly.play.aws.auth
 
-import play.api.libs.ws.WS
 import play.api.http.{ Writeable, ContentTypeOf }
 import java.net.URLEncoder
 import java.security.MessageDigest
@@ -8,6 +7,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import org.apache.commons.codec.binary.Base64
 import java.net.URI
+import play.api.libs.ws.WSRequestHolder
 
 trait Signer {
   def service:String
@@ -15,8 +15,8 @@ trait Signer {
   def algorithm:String
   def credentials:AwsCredentials
   def sign(string:String):String
-  def sign(request: WS.WSRequestHolder, method: String): WS.WSRequestHolder
-  def sign[T](request: WS.WSRequestHolder, method: String, body: T)(implicit wrt: Writeable[T]): WS.WSRequestHolder
+  def sign(request: WSRequestHolder, method: String): WSRequestHolder
+  def sign[T](request: WSRequestHolder, method: String, body: T)(implicit wrt: Writeable[T]): WSRequestHolder
   def signUrl(url:String, expiresIn: Int, queryString:Map[String, Seq[String]] = Map.empty):String
 }
 

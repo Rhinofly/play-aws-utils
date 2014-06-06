@@ -4,16 +4,16 @@ import java.net.URLEncoder
 import java.util.Calendar
 import java.util.Date
 import java.util.TimeZone
-
 import scala.collection.mutable
 import scala.language.reflectiveCalls
-
 import org.specs2.mutable.Specification
-
 import play.api.http.ContentTypeOf
 import play.api.libs.ws.WS
+import play.api.Play.current
+import play.api.test.FakeApplication
+import testUtils.RunningFakePlayApplication
 
-object Aws4SignerSpec extends Specification {
+object Aws4SignerSpec extends Specification with RunningFakePlayApplication {
 
   "Aws4Signer" should {
 
