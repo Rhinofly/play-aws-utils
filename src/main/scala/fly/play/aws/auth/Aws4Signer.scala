@@ -7,7 +7,9 @@ import play.api.libs.ws.WSRequestHolder
 
 class Aws4Signer(val credentials: AwsCredentials, val service: String, val region: String) extends Signer with SignerUtils {
 
-  val AwsCredentials(accessKeyId, secretKey) = credentials
+  val AwsCredentials(accessKeyId, secretKey, token) = credentials
+
+  val AMZ_SECURITY_TOKEN = "X-Amz-Security-Token"
 
   val algorithm = "AWS4-HMAC-SHA256"
 
@@ -25,20 +27,22 @@ class Aws4Signer(val credentials: AwsCredentials, val service: String, val regio
 
     val scope = Scope(currentDate)
 
+    val headersToSign = ("host" +: amzSecurityToken.map(_ => AMZ_SECURITY_TOKEN).toSeq).mkString(",")
+
     val queryStringWithRequiredParams = queryString ++
       Map(
         amzAlgorithm,
         amzCredential(scope),
         amzExpires(expiresIn),
-        amzSignedHeaders("host"),
-        amzDate(scope))
+        amzSignedHeaders(headersToSign),
+        amzDate(scope)
+      )
 
     val request = Request("GET", url, Map.empty, queryStringWithRequiredParams, None)
 
     val signature = createRequestSignature(scope, request)
 
-    val signedQueryString =
-      queryStringWithRequiredParams + amzSignature(signature)
+    val signedQueryString = queryStringWithRequiredParams + amzSignature(signature)
 
     url + "?" + queryStringAsString(signedQueryString)
   }
@@ -80,20 +84,18 @@ class Aws4Signer(val credentials: AwsCredentials, val service: String, val regio
   private def createAuthorizationHeaders(request: Request): Map[String, Seq[String]] = {
 
     val scope = Scope(currentDate)
-    val dateHeader = amzDate(scope)
 
-    val requestWithDateHeader =
-      request.copy(headers = request.headers + dateHeader)
+    val extraHeaders = (amzDate(scope) +: amzSecurityToken.toSeq).toMap
 
-    val signature = createRequestSignature(scope, requestWithDateHeader)
+    val requestWithExtraHeaders = request.copy(headers = request.headers ++ extraHeaders)
 
-    val authorizationHeaderValue =
-      createAuthorizationHeader(scope, requestWithDateHeader.signedHeaders, signature)
+    val signature = createRequestSignature(scope, requestWithExtraHeaders)
 
-    val authorizationHeader =
-      "Authorization" -> Seq(authorizationHeaderValue)
+    val authorizationHeaderValue = createAuthorizationHeader(scope, requestWithExtraHeaders.signedHeaders, signature)
 
-    Map(dateHeader, authorizationHeader)
+    val authorizationHeader = "Authorization" -> Seq(authorizationHeaderValue)
+
+    extraHeaders + authorizationHeader
   }
 
   protected def createRequestSignature(scope: Scope, request: Request) = {
@@ -132,12 +134,12 @@ class Aws4Signer(val credentials: AwsCredentials, val service: String, val regio
         resourcePath + "\n" +
         /* queryString */
         queryString
-        .map { case (k, v) => k -> v.headOption.getOrElse("") }
-        .toSeq.sorted
-        .map { case (k, v) => UrlEncoder.encode(k) + "=" + UrlEncoder.encode(v) }
-        .mkString("&") + "\n" +
+          .map { case (k, v) => k -> v.headOption.getOrElse("")}
+          .toSeq.sorted
+          .map { case (k, v) => UrlEncoder.encode(k) + "=" + UrlEncoder.encode(v)}
+          .mkString("&") + "\n" +
         /* headers */
-        normalizedHeaders.map { case (k, v) => k + ":" + v.mkString(",") + "\n" }.mkString + "\n" +
+        normalizedHeaders.map { case (k, v) => k + ":" + v.mkString(",") + "\n"}.mkString + "\n" +
         /* signed headers */
         request.signedHeaders + "\n" +
         /* payload */
@@ -155,8 +157,7 @@ class Aws4Signer(val credentials: AwsCredentials, val service: String, val regio
   protected def createSignature(stringToSign: String, scope: Scope) =
     toHex(sign(stringToSign, scope.key))
 
-  protected def createAuthorizationHeader(
-    scope: Scope, signedHeaders: String, signature: String): String =
+  protected def createAuthorizationHeader(scope: Scope, signedHeaders: String, signature: String): String =
     algorithm + " " +
       "Credential=" + scope.credentials + "," +
       "SignedHeaders=" + signedHeaders + "," +
@@ -169,22 +170,24 @@ class Aws4Signer(val credentials: AwsCredentials, val service: String, val regio
 
   private def hexHash(payload: Array[Byte]) = toHex(hash(payload))
 
-  val amzAlgorithm =
-    "X-Amz-Algorithm" -> Seq(algorithm)
-  def amzDate(scope: Scope) =
-    "X-Amz-Date" -> Seq(scope.dateTime)
-  def amzCredential(scope: Scope) =
-    "X-Amz-Credential" -> Seq(scope.credentials)
-  def amzSignature(signature: String) =
-    "X-Amz-Signature" -> Seq(signature)
-  def amzExpires(expiresIn: Int) =
-    "X-Amz-Expires" -> Seq(expiresIn.toString)
-  def amzSignedHeaders(headers: String) =
-    "X-Amz-SignedHeaders" -> Seq(headers)
-  def amzContentSha256(content: Array[Byte]) =
-    CONTENT_SHA_HEADER_NAME -> hexHash(content)
+  val amzAlgorithm = "X-Amz-Algorithm" -> Seq(algorithm)
+
+  def amzDate(scope: Scope) = "X-Amz-Date" -> Seq(scope.dateTime)
+
+  def amzCredential(scope: Scope) = "X-Amz-Credential" -> Seq(scope.credentials)
+
+  def amzSecurityToken = token.map(t => AMZ_SECURITY_TOKEN -> Seq(t))
+
+  def amzSignature(signature: String) = "X-Amz-Signature" -> Seq(signature)
+
+  def amzExpires(expiresIn: Int) = "X-Amz-Expires" -> Seq(expiresIn.toString)
+
+  def amzSignedHeaders(headers: String) = "X-Amz-SignedHeaders" -> Seq(headers)
+
+  def amzContentSha256(content: Array[Byte]) = CONTENT_SHA_HEADER_NAME -> hexHash(content)
 
   protected def currentDate = new Date
+
   private val TERMINATOR = "aws4_request"
   private val CONTENT_SHA_HEADER_NAME = "X-Amz-Content-Sha256"
 

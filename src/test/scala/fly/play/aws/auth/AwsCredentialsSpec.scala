@@ -17,9 +17,10 @@ object AwsCredentialsSpec extends Specification with RunningFakePlayApplication 
       ok
     }
     "implement unapply" >> {
-      val AwsCredentials(a, b) = AwsCredentials("key", "secret")
+      val AwsCredentials(a, b, Some(t)) = AwsCredentials("key", "secret", Some("token"))
       a must_== "key"
       b must_== "secret"
+      t must_== "token"
     }
 
     def checkImplicit()(implicit c: AwsCredentials) = c
