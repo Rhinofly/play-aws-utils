@@ -1,10 +1,12 @@
 name := "play-aws-utils"
 
-version := "4.0.2"
+version := "4.0.3"
 
 organization := "nl.rhinofly"
 
-crossScalaVersions := Seq("2.10.4", "2.11.1")
+scalaVersion := "2.11.2"
+
+crossScalaVersions := Seq("2.10.4", "2.11.2")
 
 libraryDependencies ++= Seq(
   "com.typesafe.play" %% "play-ws" % "2.3.0",
