@@ -1,23 +1,15 @@
 package fly.play.aws
 
 import java.text.SimpleDateFormat
-import java.util.Locale
-import java.util.SimpleTimeZone
-import scala.concurrent.Future
+import java.util.{Locale, SimpleTimeZone}
+
 import fly.play.aws.auth.Signer
-import play.api.http.ContentTypeOf
-import play.api.http.Writeable
+import play.api.http.{ContentTypeOf, Writeable}
 import play.api.libs.iteratee.Iteratee
-import play.api.libs.ws.ResponseHeaders
-import play.api.libs.ws.SignatureCalculator
-import play.api.libs.ws.WSRequest
 import play.api.Application
-import play.api.libs.ws.WSRequestHolder
-import play.api.libs.ws.WSSignatureCalculator
-import play.api.libs.ws.WSResponseHeaders
-import scala.concurrent.ExecutionContext
-import play.api.libs.ws.WS
-import play.api.libs.ws.WSResponse
+
+import scala.concurrent.{ExecutionContext, Future}
+import play.api.libs.ws.{WS, WSRequestHolder, WSResponse, WSResponseHeaders}
 
 /**
  * Amazon Web Services

@@ -1,6 +1,6 @@
 name := "play-aws-utils"
 
-version := "4.0.3"
+version := "4.1.0"
 
 organization := "nl.rhinofly"
 
