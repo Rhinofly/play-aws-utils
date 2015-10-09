@@ -1,3 +1,9 @@
+[this project is no longer maintained]
+
+It has been integrated into [Play S3](https://github.com/kaliber/play-s3)
+
+
+
 Amazon Web Services utils
 =========================
 
